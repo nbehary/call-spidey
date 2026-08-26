@@ -56,11 +56,17 @@ deferred to the user's own testing (in progress as of 2026-08-22):
 2. Confirm the TurnController blank-transcription fix holds across a full
    real conversation, not just the regression test — say a name, pause/
    mumble, keep talking, confirm the mic never goes silently deaf.
-3. Judge `spidey_v3.bin` (now `DEFAULT_VOICE`) by ear against the reference —
-   it's a CMA-ES extrapolation outside the convex hull of real Kokoro voices,
-   and every top-scoring candidate skews female at this pitch. Fallbacks if
-   it sounds off: `spidey_v3_blend.bin` (real-voice convex blend, held-out
-   0.8747), then `am_puck` @ pitch 1.26 (stays male).
+3. Judge `spidey_v3_blend.bin` @ pitch 0.95 / speed 0.98 by ear — set as
+   `DEFAULT_VOICE` 2026-08-26 (user's call), replacing `spidey_v3` @ 1.12/1.08.
+   `spidey_v3` was a CMA-ES extrapolation outside the convex hull of real
+   Kokoro voices and every top-scoring candidate skewed female at that pitch;
+   the blend is the convex-only alternative (held-out 0.8747, but measured at
+   pitch 1.12, so that number does not describe the new 0.95 playback).
+   Fallbacks if it sounds off: back to `spidey_v3`, or `am_puck` @ pitch 1.26
+   (stays male). NOTE when testing on a build that already ran: the in-app
+   voice-test screen persists its picks to `SharedPreferences`, which override
+   these compiled-in defaults — clear app data (or re-pick in that screen) or
+   the new defaults will not be what you hear.
 
 ## Constraints
 - "this is for my use only, it will not be distributed"
@@ -163,6 +169,18 @@ deferred to the user's own testing (in progress as of 2026-08-22):
     `spˈIdəɹ` (same `I` = /aɪ/) and "tidy" -> `tˈIdi` (same "-dy" -> "di"
     ending). **Confirmed fixed by ear, 2026-08-24.**
 
+- 2026-08-26 (user): voice defaults changed to `spidey_v3_blend` @ pitch 0.95
+  / speed 0.98, reversing direction from `spidey_v3` @ 1.12/1.08 (which raised
+  both above neutral). Chosen by the user, to be judged by ear — consistent
+  with the standing lesson that the WavLM similarity score is not the arbiter
+  here. Measurement context for whoever revisits this: the reference-audio
+  centroid the optimiser targets is already converged (57.7 s reference, 13
+  windows; two disjoint halves agree at cos 0.9876, and 20 s alone reproduces
+  the full centroid at 0.9931), so a longer or gap-free reference would move
+  the target by ~0.001-0.01 while `spidey_v3`'s own held-out gap to 1.0 is
+  0.066. The binding limits are the objective/perception mismatch and the
+  256-float row-128 style vector itself, not the reference recording.
+
 ## Facts
 - Devices: Note 10 (SM-N975U1, serial RF8M81B29PZ, Android 12/API 31) —
   original 7-phase target, unused since 2026-08-21. S26 Ultra (SM-S948U,
@@ -182,8 +200,12 @@ deferred to the user's own testing (in progress as of 2026-08-22):
   `set_voice`/`set_speed` exist in C++ but are NOT exposed through
   `sdk/src/main/cpp/jni_bridge.cpp` — synthesis is always speed 1.0;
   pitch/speed at playback time only, via `SpideyVoice.playbackParams()`.
-- `SpideyVoice.kt`: `DEFAULT_VOICE = "spidey_v3"`, `DEFAULT_PITCH = 1.12f`,
-  `DEFAULT_SPEED = 1.08f`. `LlmResponder.kt`: `MAX_REPLY_WORDS = 25`,
+- `SpideyVoice.kt`: `DEFAULT_VOICE = "spidey_v3_blend"`, `DEFAULT_PITCH = 0.95f`,
+  `DEFAULT_SPEED = 0.98f` (2026-08-26; was `spidey_v3` @ 1.12/1.08 — note the
+  candidates' recorded held-out scores were all measured at pitch 1.12, so
+  they no longer describe what actually gets played). `tools/` still hardcodes
+  the old 1.12/1.08 as its playback model — see `## Open items`.
+  `LlmResponder.kt`: `MAX_REPLY_WORDS = 25`,
   `MAX_OUTPUT_TOKEN = 96`, `SYSTEM_PROMPT` = Spidey persona + brevity +
   kid-safety instructions.
 - LLM model file: `/data/local/tmp/llm/gemma-4-E2B-it.litertlm`
@@ -337,6 +359,14 @@ deferred to the user's own testing (in progress as of 2026-08-22):
   own "ship as toggle, default off until judged" framing.
 - `gemma3-1b-it-int4.litertlm` still on-device, unused — fine to delete once
   Gemma 4 E2B is confirmed good by ear (no urgency, 18.5 GB free).
+- `tools/` still models playback at the OLD 1.12/1.08:
+  `optimize_spidey_voice.py:55-56` (`PLAYBACK_PITCH`/`PLAYBACK_SPEED`, whose
+  own comment says "keep in sync with the app") and
+  `audition_pronunciation.py:49-50` (`PLAYBACK_PITCH`, `DEFAULT_VOICE`).
+  Deliberately NOT updated alongside the 2026-08-26 default change: every
+  score recorded in this file and the archive was measured at 1.12, so
+  flipping the constants would silently invalidate them. Update them together
+  with a re-run of `baseline`/`optimize` if the new defaults stick by ear.
 
 ## Failed attempts
 - ATTEMPT 1 [L1] (Phase 6 SIGSEGV crash): `eventsJob.cancelAndJoin()` with a

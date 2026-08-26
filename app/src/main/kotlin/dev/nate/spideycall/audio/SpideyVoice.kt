@@ -21,9 +21,9 @@ import java.io.File
 object SpideyVoice {
     /** Compiled-in fallbacks. [DEFAULT_VOICE] must have a matching file at
      *  `assets/voices/candidates/<name>.bin`. */
-    const val DEFAULT_VOICE = "spidey_v3"
-    const val DEFAULT_PITCH = 1.12f
-    const val DEFAULT_SPEED = 1.08f
+    const val DEFAULT_VOICE = "spidey_v3_blend"
+    const val DEFAULT_PITCH = 0.95f
+    const val DEFAULT_SPEED = 0.98f
 
     private const val PREFS_NAME = "spidey_voice"
     private const val KEY_SELECTED_VOICE = "selected_voice"

@@ -73,11 +73,18 @@ Kokoro-82M on Android hardcodes English voice playback to `af_heart.bin`
 `SpideyVoice.kt` (`app/src/main/kotlin/dev/nate/spideycall/audio/`) swaps
 that file on-device.
 
-* **Current default:** `DEFAULT_VOICE = "spidey_v3"`, `DEFAULT_PITCH = 1.12f`,
-  `DEFAULT_SPEED = 1.08f` — a CMA-ES-derived candidate (held-out similarity
-  0.9335), **not yet confirmed by ear** (see `## 7`). Fallbacks if it sounds
-  off: `spidey_v3_blend.bin` (real-voice convex blend, held-out 0.8747),
-  then `am_puck` @ pitch 1.26 (stays male).
+* **Current default (2026-08-26):** `DEFAULT_VOICE = "spidey_v3_blend"`,
+  `DEFAULT_PITCH = 0.95f`, `DEFAULT_SPEED = 0.98f` — a real-voice convex
+  blend, **not yet confirmed by ear** (see `## 7`). This replaced `spidey_v3`
+  @ 1.12/1.08, a CMA-ES extrapolation *outside* the convex hull of real
+  Kokoro voices that scored higher (held-out 0.9335 vs 0.8747) but skewed
+  female at that pitch. Note both scores were measured at pitch 1.12, so
+  neither describes the current 0.95 playback. Fallbacks if it sounds off:
+  back to `spidey_v3`, or `am_puck` @ pitch 1.26 (stays male).
+* **Gotcha when testing:** the hidden voice-test screen persists its picks to
+  `SharedPreferences`, and those override the compiled-in defaults. On a
+  device that has already run the app, clear app data or re-pick in that
+  screen — otherwise a defaults change is not what you hear.
 * **Derivation tooling:** `tools/optimize_spidey_voice.py` (supersedes the
   older `tools/derive_spidey_voice.py`, which had two protocol bugs) —
   stages `selftest`/`baseline`/`optimize`/`analyze`/`pitch`. Candidates live
@@ -185,8 +192,9 @@ or fall into that garbage path.
 2. Confirm the `TurnController` blank-transcription fix holds across a full
    real conversation, not just the regression test — say a name, pause or
    mumble, keep talking, confirm the mic never goes silently deaf.
-3. Judge `spidey_v3.bin` by ear against the reference; fall back to
-   `spidey_v3_blend.bin` or `am_puck` @ pitch 1.26 if it sounds off.
+3. Judge `spidey_v3_blend.bin` @ pitch 0.95 / speed 0.98 by ear (the
+   2026-08-26 default); fall back to `spidey_v3` @ 1.12/1.08 or `am_puck`
+   @ pitch 1.26 if it sounds off. Clear app data first — see §3's gotcha.
 
 Lower-priority leftovers also tracked in `docs/STATE.md` `## Open items`:
 the never-built LLM download bootstrap, the unused
