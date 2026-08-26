@@ -50,3 +50,6 @@ lint/reports/
 # Python tooling cache (tools/)
 __pycache__/
 *.pyc
+
+# Generated pronunciation auditions (tools/audition_pronunciation.py)
+/auditions/

@@ -1,47 +1,42 @@
 package dev.nate.spideycall.audio
 
 /**
- * Text respellings for words the Kokoro phonemizer/acoustic model gets
- * wrong — kept as an *empirical, by-ear* fix, not a linguistically
- * "correct" one. Full investigation trail in `docs/STATE.md` (2026-08-24);
- * the short version:
+ * Last-resort text respellings for words the Kokoro phonemizer/acoustic model
+ * gets wrong, applied right before text reaches `synthesizeStreaming` —
+ * TTS-only, never touching what's shown on screen.
  *
- * Reading the vendored `speech-android` phonemizer source directly
- * (`kokoro_phonemizer.cpp`'s `resolve_word`) showed a word only gets real
- * phonemes via dictionary lookup (`us_gold.json`/`us_silver.json`,
- * downloaded on-device) or `-s`/`-ed`/`-ing` suffix-stripped lookup —
- * anything else falls to `return lower;`, and `tokenize()` then looks up
- * each raw Latin *character* of that as if it already were a misaki
- * phoneme symbol. Cross-checking the real on-device dictionary confirmed
- * "name" was already correctly dictionaried as `nˈAm` (misaki's uppercase
- * `A` = the /eɪ/ diphthong, genuinely long-a) — so "naym" below is
- * phonemically *wrong*, not the fixed pronunciation, and initially looked
- * like a pointless respelling worth reverting to plain "name" for the
- * "correct" dictionary phonemes.
+ * **Currently empty on purpose, and the bar for adding an entry is high.** A
+ * respelling only changes which *word* the phonemizer looks up; it cannot
+ * choose the phonemes. Anything not in `us_gold.json`/`us_silver.json`
+ * (a made-up spelling always included) falls through
+ * `KokoroPhonemizer::resolve_word`'s `return lower;`, and `tokenize()` then
+ * reads each raw Latin *character* as if it were already a misaki phoneme
+ * symbol — so a respelling either hits some *other* real dictionary entry,
+ * or produces garbage that only sounds better by luck.
  *
- * Reverting it was a mistake: the user confirmed by ear that plain "name"
- * (the dictionary-correct `nˈAm`) sounds *worse* — shorter — than "naym"'s
- * broken OOV rendering. Whatever "naym"'s raw-character fallback actually
- * decodes to on this specific voice apparently renders with a more
- * satisfying vowel length than the textbook-correct diphthong does. Kept
- * as "naym", not further tinkered with ("naim" tried and rejected — turned
- * out to be a real dictionary word mapping to the same `nˈAm`, i.e.
- * indistinguishable from plain "name" by ear). Lesson: judge these purely
- * by ear, not by whether the phoneme string looks "correct" — the
- * acoustic model's actual rendering is what matters, not the dictionary.
+ * That is exactly what happened here. "name" carried a `"name" -> "naym"`
+ * respelling for most of this project's life, on the strength of sounding
+ * longer than the dictionary's `nˈAm`; it did, but only because the OOV path
+ * happens to tokenize "naym" as /n/ + /a/ + /y/ + /m/, two vowel tokens
+ * where the dictionary had one. Fixing the dictionary entry itself (see
+ * [CustomPronunciationDict]) gets the same length from the *correct*
+ * phonemes, so the respelling was retired 2026-08-26.
  *
- * "Spidey" needed the opposite fix — it was never dictionaried at all, so
- * no respelling here could reach it either way; patched into the real
- * dictionary instead, see [dev.nate.spideycall.audio.CustomPronunciationDict].
+ * Reach for [CustomPronunciationDict] first: it patches real phonemes into
+ * the real dictionary and is the only way to actually control how a word is
+ * pronounced. Use this class only for something a dictionary entry can't
+ * express — expanding an abbreviation, say, or splitting a token the word
+ * splitter mishandles.
  */
 object TtsPronunciation {
-    private val RESPELLINGS = mapOf(
-        "name" to "naym",
-    )
+    private val RESPELLINGS = emptyMap<String, String>()
 
-    fun ttsFriendly(text: String): String {
+    fun ttsFriendly(text: String): String = respell(text, RESPELLINGS)
+
+    /** [RESPELLINGS] is empty, so tests drive the mechanism through here. */
+    internal fun respell(text: String, respellings: Map<String, String>): String {
         var result = text
-        for ((word, respelling) in RESPELLINGS) {
+        for ((word, respelling) in respellings) {
             result = Regex("\\b${Regex.escape(word)}\\b", RegexOption.IGNORE_CASE).replace(result, respelling)
         }
         return result

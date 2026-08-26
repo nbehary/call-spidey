@@ -30,15 +30,26 @@ class CustomPronunciationDictTest {
         assertEquals("spˈIdi", dict["spidey"])
     }
 
+    // "name" ships in the real dictionary as nˈAm and has to be *replaced*,
+    // not merely added — misaki's single-token `A` renders too short.
+    @Test
+    fun overwritesTheStockNameEntryEvenThoughItAlreadyExists() {
+        val dir = modelDirWith("""{"name": "nˈAm"}""")
+
+        CustomPronunciationDict.install(dir.absolutePath)
+
+        assertEquals("nˈeɪm", readGoldDict(dir)["name"])
+    }
+
     @Test
     fun leavesUnrelatedEntriesUntouched() {
-        val dir = modelDirWith("""{"spider": "spider-phonemes", "name": "nˈAm"}""")
+        val dir = modelDirWith("""{"spider": "spider-phonemes", "tidy": "tˈIdi"}""")
 
         CustomPronunciationDict.install(dir.absolutePath)
 
         val dict = readGoldDict(dir)
         assertEquals("spider-phonemes", dict["spider"])
-        assertEquals("nˈAm", dict["name"])
+        assertEquals("tˈIdi", dict["tidy"])
     }
 
     @Test
@@ -50,7 +61,8 @@ class CustomPronunciationDictTest {
 
         val dict = readGoldDict(dir)
         assertEquals("spˈIdi", dict["spidey"])
-        assertEquals(2, dict.size) // "spider" plus the one added "spidey" entry, no duplicates
+        assertEquals("nˈeɪm", dict["name"])
+        assertEquals(3, dict.size) // "spider" plus the two added entries, no duplicates
     }
 
     @Test

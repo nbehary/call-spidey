@@ -36,9 +36,20 @@ wrong-but-better-sounding OOV rendering. Restored "naym". Lesson logged in
 `TtsPronunciation.kt`: judge these by ear, not by whether the phoneme string
 looks "correct". See `## Decisions`.
 
+"name" root-caused and fixed properly (2026-08-26): the shortness was misaki's
+single-token `A` shorthand for /eɪ/ — Kokoro's duration predictor allots time
+per token, so `nˈAm` gives the diphthong one phone's worth. Dictionary entry
+replaced with `nˈeɪm` (identical phonemes, spelled as two real IPA symbols);
+the "naym" text respelling is retired, since a respelling would shadow the
+dictionary entry. Awaiting the user's by-ear verdict — see `## Next`.
+
 ## Next
 Nothing plan-mandated remains; everything below is a human listen/judge step,
 deferred to the user's own testing (in progress as of 2026-08-22):
+0. Judge "name" by ear on the installed build (2026-08-26 fix, `nˈeɪm`). If
+   it's still not right, `auditions/` holds the alternatives already rendered
+   — regenerate/extend with `tools/audition_pronunciation.py` rather than
+   guessing, and change only `CustomPronunciationDict.NAME_PHONEMES`.
 1. Judge Gemma 4 E2B's reply *quality* across a real conversation — Phase D's
    own DONE-WHEN ("20 real spoken turns: in-character, kid-safe") never
    attempted for either LLM. One sample reply looked good; n=1 so far.
@@ -279,6 +290,35 @@ deferred to the user's own testing (in progress as of 2026-08-22):
   `./gradlew :app:testDebugUnitTest :app:assembleDebug` -> BUILD
   SUCCESSFUL; installed on the S26 Ultra — not yet re-confirmed by ear
   after the restore (do that before considering this fully closed).
+- "name" pronunciation root-caused and fixed at the dictionary — 2026-08-26.
+  CAUSE (not previously understood): the shortness is misaki's *single-token*
+  uppercase `A` shorthand for the /eɪ/ diphthong. Kokoro's duration predictor
+  allots time per token, so `nˈAm` gives the whole diphthong one phone's
+  worth of time. `e` and `ɪ` are separately in Kokoro's vocab
+  (`vocab_index.json`, 176 symbols — checked, and nothing in any candidate
+  was silently dropped by `tokenize()`), so `nˈeɪm` is phonemically the same
+  sound spelled as two tokens. Measured on `spidey_v3` with the new
+  `tools/audition_pronunciation.py`, word alone: `nˈAm` 0.71 s, "naym" (the
+  old OOV respelling) 0.98 s, **`nˈeɪm` 1.18 s**, `nˈeɪːm` 1.25 s,
+  `nˈAɪm` 1.29 s. That also explains why "naym" ever helped — the OOV path
+  tokenizes it as /n/+/a/+/y/+/m/, two vowel tokens where the dictionary had
+  one, i.e. the right effect by accident.
+  FIX: `CustomPronunciationDict` now also overrides `"name" -> "nˈeɪm"`, and
+  `TtsPronunciation.RESPELLINGS` is empty — a respelling makes the phonemizer
+  look up a *different word*, so leaving "naym" in would have shadowed the new
+  entry. `TtsPronunciation` kept (with an `internal respell()` the tests drive)
+  as the place for fixes a dictionary entry can't express.
+  NEW TOOL: `tools/audition_pronunciation.py` renders candidates to WAV in
+  seconds — a faithful port of `KokoroPhonemizer`'s English path reading the
+  real device-pulled `us_gold.json`/`us_silver.json`/`vocab_index.json`, then
+  the public Kokoro ONNX export plus the `PlaybackParams` pitch shift. Run it
+  with `/home/nate/local-xtts/venv/bin/python` (has onnxruntime + librosa +
+  soundfile); output lands in the gitignored `auditions/`.
+  Verified: `./gradlew :app:testDebugUnitTest` -> BUILD SUCCESSFUL, 59/59, 0
+  failures. Verified: `./gradlew :app:assembleDebug :app:installDebug` ->
+  BUILD SUCCESSFUL on SM-S948U; dialed a real call and re-pulled the
+  dictionary — `name -> nˈeɪm`, `spidey -> spˈIdi`, 90202 entries.
+  NOT yet judged by ear — auditions handed to the user 2026-08-26.
 
 ## Open items
 - Old Phase 3 "live speak-5-lines" check, never actually done (low priority

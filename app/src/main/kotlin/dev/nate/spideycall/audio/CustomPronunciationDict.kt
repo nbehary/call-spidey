@@ -24,18 +24,27 @@ import kotlinx.serialization.json.jsonObject
  * `us_silver.json`, including a made-up respelling like "spydey") falls to
  * `return lower;`, and `tokenize()` then looks up each raw Latin *character*
  * of that string as if it already were a misaki phoneme symbol — silently
- * wrong, not a reasonable approximation. Confirmed against the real
- * on-device dictionaries (2026-08-24): "name" was already correctly
- * dictionaried as `nˈAm` (misaki's uppercase `A` = the /eɪ/ diphthong) —
- * respelling it to "naym"/"naim" never fixed anything (the residual
- * shortness is downstream in Kokoro's acoustic/duration model, out of
- * reach from text). "Spidey" was never dictionaried at all, so no
- * respelling of it could work either way — hence patching the dictionary
- * directly instead.
+ * wrong, not a reasonable approximation. "Spidey" was never dictionaried at
+ * all, so no respelling of it could work either way — hence patching the
+ * dictionary directly instead.
  *
  * [SPIDEY_PHONEMES] is built by direct analogy from two *already-correct*
  * real dictionary entries, not guessed: "spider" -> `spˈIdəɹ` (same `I` =
  * /aɪ/) and "tidy" -> `tˈIdi` (same "-dy" -> "di" ending pattern).
+ *
+ * [NAME_PHONEMES] fixes the long-running "name comes out short" complaint,
+ * and is the same diphthong the dictionary already had — just spelled out.
+ * "name" ships dictionaried as `nˈAm`, where misaki's uppercase `A` is a
+ * *single* token standing for the whole /eɪ/ diphthong; `e` and `ɪ` are
+ * separately in Kokoro's vocab, so `nˈeɪm` is phonemically identical but
+ * two tokens long. Kokoro's duration predictor works per token, so the
+ * one-token shorthand gets one phone's worth of time — measured with
+ * `tools/audition_pronunciation.py` (which ports the device phonemizer and
+ * reads the real pulled dictionaries), the word alone renders 0.71 s as
+ * `nˈAm` against 1.18 s as `nˈeɪm` on `spidey_v3`. That is the actual
+ * mechanism behind the shortness; the older `TtsPronunciation` "naym"
+ * respelling (0.98 s) was a partial workaround that got there by accident,
+ * via the broken OOV path, and is now retired.
  */
 object CustomPronunciationDict {
     private const val TAG = "CustomPronunciationDict"
@@ -44,16 +53,21 @@ object CustomPronunciationDict {
     // Misaki phoneme string: s, p, ˈ(primary stress, U+02C8), I (/aɪ/), d, i.
     private const val SPIDEY_PHONEMES = "spˈIdi"
 
+    // n, ˈ(primary stress), e + ɪ (/eɪ/ written as its two real IPA symbols
+    // rather than misaki's single-token `A` shorthand — see the class doc), m.
+    private const val NAME_PHONEMES = "nˈeɪm"
+
     private val OVERRIDES = mapOf(
         "spidey" to SPIDEY_PHONEMES,
+        "name" to NAME_PHONEMES,
     )
 
     /**
      * Idempotent and safe to call every launch: only re-parses+rewrites the
      * ~90k-entry dictionary file when an override is actually missing or
      * stale (e.g. first run after this shipped, or a fresh model
-     * re-download). Never throws — a failed patch just leaves "Spidey"
-     * mispronounced, not worth aborting call setup over.
+     * re-download). Never throws — a failed patch just leaves the words in
+     * [OVERRIDES] mispronounced, not worth aborting call setup over.
      */
     fun install(modelDir: String) {
         try {
