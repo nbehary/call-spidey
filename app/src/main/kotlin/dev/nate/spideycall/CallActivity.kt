@@ -30,7 +30,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -112,6 +111,7 @@ class CallActivity : ComponentActivity() {
                             latency = voiceSession.latency.value,
                             onCall = ::onCallTapped,
                             onTestVoices = { showVoiceTest.value = true },
+                            onSendTyped = ::sendTypedLine,
                             onHangUp = ::hangUp,
                         )
                     }
@@ -168,12 +168,28 @@ class CallActivity : ComponentActivity() {
 
                 tones.stop()
                 callPhase.value = CallPhase.CONNECTED
-                voiceSession.speakGreeting(script.greetingSpoken)
+                voiceSession.speak(script.greetingSpoken)
             } catch (e: Exception) {
                 tones.stop()
                 voiceStatus.value = "Voice unavailable: ${e.message}"
                 callPhase.value = CallPhase.ENDED
             }
+        }
+    }
+
+    /**
+     * The typed-input path bypasses [TurnController] entirely — it never
+     * goes through the pipeline, so nothing in the mic turn loop speaks its
+     * reply. Without this, only the greeting is ever heard and every typed
+     * turn comes back as text alone. [VoiceSession.speak] serializes against
+     * an in-flight mic turn on its own mutex, so a typed line landing
+     * mid-turn queues rather than overlapping.
+     */
+    private fun sendTypedLine(text: String) {
+        val activeChat = chat.value ?: return
+        lifecycleScope.launch {
+            val reply = activeChat.send(text) ?: return@launch
+            voiceSession.speak(reply)
         }
     }
 
@@ -204,6 +220,7 @@ private fun CallScreen(
     latency: TurnLatency?,
     onCall: () -> Unit,
     onTestVoices: () -> Unit,
+    onSendTyped: (String) -> Unit,
     onHangUp: () -> Unit,
 ) {
     // A farewell keyword ends the call from inside the ELIZA turn loop, not
@@ -241,7 +258,7 @@ private fun CallScreen(
             CallPhase.IDLE, CallPhase.ENDED -> IdleOrEndedBody(phase, onCall)
             CallPhase.DIALING -> StatusBody("Dialing…")
             CallPhase.RINGING -> StatusBody(voiceStatus ?: "Ringing…")
-            CallPhase.CONNECTED -> ConnectedBody(chat!!, voiceStatus, latency, onHangUp)
+            CallPhase.CONNECTED -> ConnectedBody(chat!!, voiceStatus, latency, onSendTyped, onHangUp)
         }
     }
 }
@@ -283,6 +300,7 @@ private fun ColumnScope.ConnectedBody(
     chat: ChatState,
     voiceStatus: String?,
     latency: TurnLatency?,
+    onSendTyped: (String) -> Unit,
     onHangUp: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -290,7 +308,6 @@ private fun ColumnScope.ConnectedBody(
     var showTypedInput by remember { mutableStateOf(false) }
     var input by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
-    val coroutineScope = rememberCoroutineScope()
 
     if (voiceStatus != null) {
         Text(text = voiceStatus, modifier = Modifier.testTag("voice-status"))
@@ -336,7 +353,7 @@ private fun ColumnScope.ConnectedBody(
                     onClick = {
                         val text = input
                         input = ""
-                        coroutineScope.launch { chat.send(text) }
+                        onSendTyped(text)
                     },
                 ) {
                     Text("Send")

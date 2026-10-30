@@ -108,8 +108,13 @@ class VoiceSession(private val context: Context) {
         startMic(scope, p)
     }
 
-    /** Speaks [text] through the pipeline [start] set up. No-op before/after that. */
-    suspend fun speakGreeting(text: String) {
+    /**
+     * Speaks [text] through the pipeline [start] set up. No-op before/after
+     * that. Used for the opening greeting and for replies to typed input —
+     * anything outside [TurnController]'s mic turn loop, which speaks its
+     * own replies.
+     */
+    suspend fun speak(text: String) {
         val p = pipeline ?: return
         speak(p, text)
     }
@@ -123,40 +128,56 @@ class VoiceSession(private val context: Context) {
      * that the `AudioTrack` buffer can run dry between chunks unless the
      * next chunk is already being generated while the current one plays.
      */
-    private suspend fun speak(pipeline: SpeechPipeline, text: String): Unit = speakMutex.withLock {
-        val streamPlayer = player ?: return@withLock
+    private suspend fun speak(pipeline: SpeechPipeline, text: String): Unit = withContext(Dispatchers.IO) {
+        speakMutex.withLock {
+            speakLocked(pipeline, text)
+        }
+    }
+
+    /**
+     * The [speakMutex] acquire/release and this whole body must run off the
+     * main thread — hence [speak]'s `withContext(Dispatchers.IO)` sitting
+     * *outside* `withLock`, not inside this body. Both callers ([speak]'s
+     * public overload and [TurnController], collecting on `lifecycleScope`)
+     * are main-dispatched, so with the `withContext` inside the lock the
+     * `finally` below and the mutex unlock resume on main — while [stop]'s
+     * `runBlocking` is sitting on that same thread waiting for that very
+     * unlock. Measured on-device: a farewell reply deadlocked for the full
+     * [STOP_JOIN_TIMEOUT_MS] (playback started 13:19:30, player not released
+     * until 13:19:49) before the call would end.
+     */
+    private suspend fun speakLocked(pipeline: SpeechPipeline, text: String) {
+        val streamPlayer = player ?: return
         micPaused = true
         var started = false
         val spokenText = TtsPronunciation.ttsFriendly(text)
         try {
-            withContext(Dispatchers.IO) {
-                coroutineScope {
-                    val audio = Channel<SpeechSynthesisResult>(Channel.UNLIMITED)
-                    val producer = launch(Dispatchers.Default) {
-                        try {
-                            pipeline.synthesizeStreaming(spokenText, "en") { chunk, _ ->
-                                if (chunk.pcm16.isNotEmpty()) {
-                                    check(audio.trySend(chunk).isSuccess) { "TTS playback channel closed" }
-                                }
+            coroutineScope {
+                val audio = Channel<SpeechSynthesisResult>(Channel.UNLIMITED)
+                val producer = launch(Dispatchers.Default) {
+                    try {
+                        pipeline.synthesizeStreaming(spokenText, "en") { chunk, _ ->
+                            if (chunk.pcm16.isNotEmpty()) {
+                                check(audio.trySend(chunk).isSuccess) { "TTS playback channel closed" }
                             }
-                        } catch (e: Throwable) {
-                            audio.close(e)
-                            throw e
-                        } finally {
-                            audio.close()
                         }
+                    } catch (e: Throwable) {
+                        audio.close(e)
+                        throw e
+                    } finally {
+                        audio.close()
                     }
-                    for (chunk in audio) {
-                        if (!started) {
-                            streamPlayer.start(chunk.pcm16)
-                            started = true
-                        } else {
-                            streamPlayer.write(chunk.pcm16)
-                        }
-                    }
-                    producer.join()
-                    if (started) streamPlayer.awaitDrained()
                 }
+                for (chunk in audio) {
+                    if (!started) {
+                        streamPlayer.start(chunk.pcm16)
+                        started = true
+                    } else {
+                        streamPlayer.write(chunk.pcm16)
+                    }
+                }
+                producer.join()
+                if (started) streamPlayer.awaitDrained()
             }
         } finally {
             if (started) streamPlayer.resetForNextUtterance()

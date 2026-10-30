@@ -236,6 +236,18 @@ deferred to the user's own testing (in progress as of 2026-08-22):
   a bare `$ANDROID_HOME` in a fresh shell on this machine.
 
 ## Done
+- Typed replies now speak + main-thread deadlock in `speak()` — 2026-08-26.
+  RESULT: the typed-input debug path called `chat.send()` only, so every
+  reply after the greeting came back as text alone (user-reported: "the
+  voice is only working for the intro"); `CallActivity.sendTypedLine()` now
+  speaks the reply via `VoiceSession.speak()` (renamed from `speakGreeting`).
+  Fixing that exposed a latent deadlock shared with the mic path:
+  `speak()` held `speakMutex` across a `withContext(Dispatchers.IO)` *inside*
+  the lock, so its `finally` and the unlock resumed on main — where
+  `stop()`'s `runBlocking` was already blocking, waiting for that unlock. A
+  farewell hung for the full 20 s `STOP_JOIN_TIMEOUT_MS` (measured: playback
+  13:19:30, player released 13:19:49). The `withContext` moved outside
+  `withLock`; re-measured farewell teardown at 2 ms after playback ended.
 - Phases 0-7 (scaffold, ELIZA core, text loop, voice/STT, TTS, Spidey voice
   mechanism, Call UX, Polish) — 2026-08-20. RESULT: full dial -> ring ->
   connect -> talk -> hang-up flow on the Note 10, JVM + instrumentation
