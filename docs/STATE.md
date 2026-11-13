@@ -44,7 +44,10 @@ the "naym" text respelling is retired, since a respelling would shadow the
 dictionary entry. Awaiting the user's by-ear verdict — see `## Next`.
 
 ## Next
-Nothing plan-mandated remains; everything below is a human listen/judge step,
+iOS port (planned 2026-11-13, not started): see `docs/ios/PLAN.md` and
+`docs/ios/PROGRESS.md` — tracked there, not in this file.
+
+Nothing plan-mandated remains for Android; everything below is a human listen/judge step,
 deferred to the user's own testing (in progress as of 2026-08-22):
 0. Judge "name" by ear on the installed build (2026-08-26 fix, `nˈeɪm`). If
    it's still not right, `auditions/` holds the alternatives already rendered
